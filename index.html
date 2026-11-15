@@ -1,0 +1,652 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>FriendsChat — Private Group Chat</title>
+  <link id="pwa-manifest" rel="manifest" href="" />
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.52.1"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      overscroll-behavior-y: contain;
+    }
+    .chat-scroll::-webkit-scrollbar {
+      width: 5px;
+    }
+    .chat-scroll::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.35);
+      border-radius: 9999px;
+    }
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .msg-enter {
+      animation: fadeSlideUp 0.18s ease-out;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 h-dvh w-full overflow-hidden flex flex-col">
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 z-50 hidden px-4 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-sm font-medium text-white shadow-xl max-w-[90vw] text-center"></div>
+
+  <!-- Lightbox Modal for Full-Screen Image View -->
+  <div id="lightbox" class="fixed inset-0 z-50 hidden bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
+    <button id="lightbox-close" type="button" aria-label="Close image" class="absolute top-4 right-4 w-10 h-10 rounded-full bg-slate-800/90 text-white flex items-center justify-center hover:bg-slate-700">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+    <img id="lightbox-img" src="" alt="Full size media" class="max-w-full max-h-[85vh] rounded-xl object-contain shadow-2xl" />
+  </div>
+
+  <!-- JOIN / LOGIN SCREEN -->
+  <div id="join-screen" class="flex-1 flex items-center justify-center p-4 bg-gradient-to-b from-slate-900 to-slate-950">
+    <div class="w-full max-w-sm bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-2xl">
+      <div class="flex items-center justify-center w-14 h-14 rounded-2xl bg-emerald-500/15 text-emerald-400 mx-auto mb-4">
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+        </svg>
+      </div>
+      <h1 class="text-xl font-bold text-center text-white">FriendsChat</h1>
+      <p class="text-xs text-slate-400 text-center mt-1 mb-5">Private chat &amp; media sharing for you and your friends</p>
+
+      <div id="mode-badge-join" class="mb-4 px-3 py-2 rounded-xl text-xs text-center hidden"></div>
+
+      <form id="join-form" class="space-y-4">
+        <div>
+          <label for="input-name" class="block text-xs font-medium text-slate-300 mb-1.5">Your Name</label>
+          <input id="input-name" type="text" required maxlength="24" placeholder="e.g., Rahul"
+            class="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+        </div>
+        <div>
+          <label for="input-room" class="block text-xs font-medium text-slate-300 mb-1.5">Secret Room Code</label>
+          <input id="input-room" type="text" required maxlength="30" placeholder="e.g., SQUAD2026"
+            class="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-white placeholder-slate-500 text-sm uppercase tracking-wider focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+          <p class="text-[11px] text-slate-500 mt-1.5">Share this exact code with your friends so you all join the same chat.</p>
+        </div>
+        <button type="submit"
+          class="w-full py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.99] text-slate-950 font-semibold text-sm transition shadow-lg shadow-emerald-500/20">
+          Enter Chat Room
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- CHAT SCREEN -->
+  <div id="chat-screen" class="hidden flex-1 flex flex-col h-dvh max-w-2xl w-full mx-auto bg-slate-950 border-x border-slate-900">
+
+    <!-- Header -->
+    <header class="shrink-0 px-4 py-3 bg-slate-900/95 border-b border-slate-800 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="w-10 h-10 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-sm shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+        </div>
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <h2 id="header-room" class="font-semibold text-sm text-white truncate">ROOM</h2>
+            <span id="status-pill" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/15 text-emerald-400">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Live
+            </span>
+          </div>
+          <p id="header-user" class="text-xs text-slate-400 truncate">Signed in as ...</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 shrink-0">
+        <button id="copy-invite-btn" type="button" title="Copy room code"
+          class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 transition">
+          Share Code
+        </button>
+        <button id="leave-btn" type="button" title="Switch room or name"
+          class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition" aria-label="Leave room">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Messages Area -->
+    <main id="messages-list" class="flex-1 overflow-y-auto chat-scroll p-4 space-y-3 bg-slate-950">
+      <div id="empty-state" class="h-full flex flex-col items-center justify-center text-center px-6 text-slate-500">
+        <p class="text-sm font-medium text-slate-400">No messages yet</p>
+        <p class="text-xs mt-1">Send a message, photo, video, or voice note to start chatting.</p>
+      </div>
+    </main>
+
+    <!-- Pending Attachment Preview Bar -->
+    <div id="attachment-bar" class="hidden shrink-0 px-4 py-2 bg-slate-900 border-t border-slate-800 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <span class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+        </span>
+        <div class="min-w-0">
+          <p id="attachment-name" class="text-xs font-medium text-white truncate">file.jpg</p>
+          <p id="attachment-size" class="text-[10px] text-slate-400">0 KB</p>
+        </div>
+      </div>
+      <button id="clear-attachment-btn" type="button" class="text-xs text-rose-400 hover:text-rose-300 font-medium px-2 py-1">Remove</button>
+    </div>
+
+    <!-- Input Composer -->
+    <footer class="shrink-0 p-3 bg-slate-900/95 border-t border-slate-800">
+      <form id="message-form" class="flex items-end gap-2">
+        <input id="file-input" type="file" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.zip" class="hidden" />
+        <button id="attach-btn" type="button" title="Attach photo, video, audio, or file"
+          class="w-11 h-11 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center shrink-0 transition" aria-label="Attach media">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
+          </svg>
+        </button>
+
+        <button id="record-btn" type="button" title="Record voice note"
+          class="w-11 h-11 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center shrink-0 transition" aria-label="Record voice note">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
+          </svg>
+        </button>
+
+        <textarea id="message-input" rows="1" placeholder="Type a message..."
+          class="flex-1 px-4 py-3 rounded-2xl bg-slate-800 border border-slate-700 text-white placeholder-slate-500 text-sm resize-none max-h-28 focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+
+        <button id="send-btn" type="submit"
+          class="w-11 h-11 rounded-2xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 flex items-center justify-center shrink-0 transition shadow-md shadow-emerald-500/20" aria-label="Send message">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </button>
+      </form>
+    </footer>
+  </div>
+
+  <script>
+    // =========================================================================
+    // STEP 1: PASTE YOUR SUPABASE PROJECT DETAILS BELOW (Replace the two texts)
+    // =========================================================================
+    const SUPABASE_URL = "https://sdmjewtfatccaatquach.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_9-fAuD00Hv7S39dXhvaycw_V8jaMr_K";
+    // =========================================================================
+
+    const IS_DEMO = (
+      SUPABASE_URL === "YOUR_SUPABASE_URL" ||
+      SUPABASE_ANON_KEY === "YOUR_SUPABASE_ANON_KEY" ||
+      !SUPABASE_URL.startsWith("https://")
+    );
+
+    // Register inline PWA manifest so Chrome on Android shows "Install App"
+    (function setupManifest() {
+      try {
+        const manifest = {
+          name: "FriendsChat",
+          short_name: "FriendsChat",
+          start_url: "./",
+          display: "standalone",
+          background_color: "#020617",
+          theme_color: "#0f172a",
+          icons: [{
+            src: "data:image/svg+xml;utf8," + encodeURIComponent(
+              '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#10b981"/><path d="M128 160h256a32 32 0 0132 32v144a32 32 0 01-32 32H224l-80 64v-64h-16a32 32 0 01-32-32V192a32 32 0 0132-32z" fill="#020617"/></svg>'
+            ),
+            sizes: "512x512",
+            type: "image/svg+xml"
+          }]
+        };
+        const blob = new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" });
+        document.getElementById("pwa-manifest").href = URL.createObjectURL(blob);
+      } catch (e) {}
+    })();
+
+    let supabaseClient = null;
+    if (!IS_DEMO && window.supabase && typeof window.supabase.createClient === "function") {
+      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
+
+    const state = {
+      userName: "",
+      roomCode: "",
+      messages: [],
+      pendingFile: null,
+      realtimeChannel: null,
+      mediaRecorder: null,
+      audioChunks: [],
+      isRecording: false
+    };
+
+    const el = {
+      toast: document.getElementById("toast"),
+      lightbox: document.getElementById("lightbox"),
+      lightboxImg: document.getElementById("lightbox-img"),
+      lightboxClose: document.getElementById("lightbox-close"),
+      joinScreen: document.getElementById("join-screen"),
+      chatScreen: document.getElementById("chat-screen"),
+      modeBadgeJoin: document.getElementById("mode-badge-join"),
+      joinForm: document.getElementById("join-form"),
+      inputName: document.getElementById("input-name"),
+      inputRoom: document.getElementById("input-room"),
+      headerRoom: document.getElementById("header-room"),
+      headerUser: document.getElementById("header-user"),
+      statusPill: document.getElementById("status-pill"),
+      copyInviteBtn: document.getElementById("copy-invite-btn"),
+      leaveBtn: document.getElementById("leave-btn"),
+      messagesList: document.getElementById("messages-list"),
+      emptyState: document.getElementById("empty-state"),
+      attachmentBar: document.getElementById("attachment-bar"),
+      attachmentName: document.getElementById("attachment-name"),
+      attachmentSize: document.getElementById("attachment-size"),
+      clearAttachmentBtn: document.getElementById("clear-attachment-btn"),
+      messageForm: document.getElementById("message-form"),
+      fileInput: document.getElementById("file-input"),
+      attachBtn: document.getElementById("attach-btn"),
+      recordBtn: document.getElementById("record-btn"),
+      messageInput: document.getElementById("message-input"),
+      sendBtn: document.getElementById("send-btn")
+    };
+
+    let toastTimer = null;
+    function showToast(msg) {
+      el.toast.textContent = msg;
+      el.toast.classList.remove("hidden");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.toast.classList.add("hidden"), 3200);
+    }
+
+    function escapeHtml(str) {
+      return String(str || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function formatTime(iso) {
+      try {
+        return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      } catch (e) {
+        return "";
+      }
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes) return "0 KB";
+      if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB";
+      return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+    }
+
+    function getMediaCategory(mime, filename) {
+      const m = (mime || "").toLowerCase();
+      const f = (filename || "").toLowerCase();
+      if (m.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp)$/.test(f)) return "image";
+      if (m.startsWith("video/") || /\.(mp4|webm|mov|mkv)$/.test(f)) return "video";
+      if (m.startsWith("audio/") || /\.(mp3|wav|ogg|m4a|webm)$/.test(f)) return "audio";
+      return "file";
+    }
+
+    // Update mode badge
+    if (IS_DEMO) {
+      el.modeBadgeJoin.textContent = "Preview Mode (Add Supabase keys in code to chat live with friends)";
+      el.modeBadgeJoin.className = "mb-4 px-3 py-2 rounded-xl text-xs text-center bg-amber-500/15 text-amber-300 border border-amber-500/30";
+      el.modeBadgeJoin.classList.remove("hidden");
+    }
+
+    // Restore saved name & room
+    try {
+      const savedName = localStorage.getItem("fc_name");
+      const savedRoom = localStorage.getItem("fc_room");
+      if (savedName) el.inputName.value = savedName;
+      if (savedRoom) el.inputRoom.value = savedRoom;
+    } catch (e) {}
+
+    function renderMessages() {
+      if (state.messages.length === 0) {
+        el.messagesList.innerHTML = "";
+        el.messagesList.appendChild(el.emptyState);
+        el.emptyState.classList.remove("hidden");
+        return;
+      }
+
+      el.emptyState.classList.add("hidden");
+      const html = state.messages.map((msg) => {
+        const isMe = msg.sender.toLowerCase() === state.userName.toLowerCase();
+        const alignClass = isMe ? "items-end" : "items-start";
+        const bubbleClass = isMe
+          ? "bg-emerald-600 text-white rounded-2xl rounded-br-sm"
+          : "bg-slate-800 text-slate-100 rounded-2xl rounded-bl-sm";
+
+        let mediaHtml = "";
+        if (msg.media_url) {
+          if (msg.media_type === "image") {
+            mediaHtml = `<img src="${escapeHtml(msg.media_url)}" alt="Shared photo" data-lightbox="${escapeHtml(msg.media_url)}" class="mt-1.5 rounded-xl max-h-64 w-auto object-cover cursor-pointer border border-white/10" />`;
+          } else if (msg.media_type === "video") {
+            mediaHtml = `<video src="${escapeHtml(msg.media_url)}" controls playsinline class="mt-1.5 rounded-xl max-h-64 w-full bg-black"></video>`;
+          } else if (msg.media_type === "audio") {
+            mediaHtml = `<audio src="${escapeHtml(msg.media_url)}" controls class="mt-1.5 w-56 max-w-full h-9"></audio>`;
+          } else {
+            mediaHtml = `<a href="${escapeHtml(msg.media_url)}" target="_blank" rel="noopener noreferrer" download="${escapeHtml(msg.file_name || "file")}" class="mt-1.5 flex items-center gap-2 px-3 py-2 rounded-xl bg-black/25 hover:bg-black/35 text-xs underline">${escapeHtml(msg.file_name || "Download file")}</a>`;
+          }
+        }
+
+        const textHtml = msg.text ? `<p class="text-sm whitespace-pre-wrap break-words leading-relaxed">${escapeHtml(msg.text)}</p>` : "";
+
+        return `
+          <div class="flex flex-col ${alignClass} msg-enter">
+            ${!isMe ? `<span class="text-[11px] font-medium text-slate-400 mb-1 px-1">${escapeHtml(msg.sender)}</span>` : ""}
+            <div class="max-w-[82%] px-3.5 py-2.5 shadow-sm ${bubbleClass}">
+              ${textHtml}
+              ${mediaHtml}
+              <div class="text-[10px] opacity-70 text-right mt-1">${formatTime(msg.created_at)}</div>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      el.messagesList.innerHTML = html;
+      el.messagesList.scrollTop = el.messagesList.scrollHeight;
+    }
+
+    async function loadMessages() {
+      if (IS_DEMO) {
+        if (state.messages.length === 0) {
+          state.messages = [{
+            id: "demo-1",
+            sender: "FriendsChat Bot",
+            text: "Welcome! You are in local Preview Mode. Try sending a text, photo, or voice note below.",
+            created_at: new Date().toISOString()
+          }];
+        }
+        renderMessages();
+        return;
+      }
+
+      const { data, error } = await supabaseClient
+        .from("messages")
+        .select("*")
+        .eq("room_code", state.roomCode)
+        .order("created_at", { ascending: true })
+        .limit(100);
+
+      if (error) {
+        showToast("Could not load messages: " + error.message);
+        return;
+      }
+      state.messages = data || [];
+      renderMessages();
+    }
+
+    function subscribeRealtime() {
+      if (IS_DEMO || !supabaseClient) return;
+      if (state.realtimeChannel) {
+        supabaseClient.removeChannel(state.realtimeChannel);
+      }
+      state.realtimeChannel = supabaseClient
+        .channel("room-" + state.roomCode)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "messages",
+            filter: "room_code=eq." + state.roomCode
+          },
+          (payload) => {
+            const exists = state.messages.some((m) => m.id === payload.new.id);
+            if (!exists) {
+              state.messages.push(payload.new);
+              renderMessages();
+            }
+          }
+        )
+        .subscribe();
+    }
+
+    async function enterRoom(name, room) {
+      state.userName = name.trim();
+      state.roomCode = room.trim().toUpperCase();
+
+      try {
+        localStorage.setItem("fc_name", state.userName);
+        localStorage.setItem("fc_room", state.roomCode);
+      } catch (e) {}
+
+      el.headerRoom.textContent = "Room: " + state.roomCode;
+      el.headerUser.textContent = "You: " + state.userName;
+      if (IS_DEMO) {
+        el.statusPill.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span> Preview';
+        el.statusPill.className = "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/15 text-amber-300";
+      }
+
+      el.joinScreen.classList.add("hidden");
+      el.chatScreen.classList.remove("hidden");
+
+      await loadMessages();
+      subscribeRealtime();
+    }
+
+    el.joinForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = el.inputName.value.trim();
+      const room = el.inputRoom.value.trim();
+      if (!name || !room) {
+        showToast("Please enter both your name and a room code.");
+        return;
+      }
+      await enterRoom(name, room);
+    });
+
+    el.leaveBtn.addEventListener("click", () => {
+      if (state.realtimeChannel && supabaseClient) {
+        supabaseClient.removeChannel(state.realtimeChannel);
+        state.realtimeChannel = null;
+      }
+      el.chatScreen.classList.add("hidden");
+      el.joinScreen.classList.remove("hidden");
+    });
+
+    el.copyInviteBtn.addEventListener("click", () => {
+      const shareText = `Join my FriendsChat room! Open the app and enter Room Code: ${state.roomCode}`;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(state.roomCode).then(() => {
+          showToast("Copied room code: " + state.roomCode);
+        }).catch(() => {
+          showToast("Room code: " + state.roomCode);
+        });
+      } else {
+        const tmp = document.createElement("textarea");
+        tmp.value = shareText;
+        document.body.appendChild(tmp);
+        tmp.select();
+        document.execCommand("copy");
+        document.body.removeChild(tmp);
+        showToast("Copied room code: " + state.roomCode);
+      }
+    });
+
+    // Attachment handling
+    el.attachBtn.addEventListener("click", () => el.fileInput.click());
+
+    el.fileInput.addEventListener("change", () => {
+      const file = el.fileInput.files[0];
+      if (!file) return;
+      if (file.size > 25 * 1024 * 1024) {
+        showToast("Please choose a file smaller than 25 MB.");
+        el.fileInput.value = "";
+        return;
+      }
+      state.pendingFile = file;
+      el.attachmentName.textContent = file.name;
+      el.attachmentSize.textContent = formatBytes(file.size);
+      el.attachmentBar.classList.remove("hidden");
+    });
+
+    function clearPendingFile() {
+      state.pendingFile = null;
+      el.fileInput.value = "";
+      el.attachmentBar.classList.add("hidden");
+    }
+
+    el.clearAttachmentBtn.addEventListener("click", clearPendingFile);
+
+    // Voice note recording
+    el.recordBtn.addEventListener("click", async () => {
+      if (state.isRecording && state.mediaRecorder) {
+        state.mediaRecorder.stop();
+        state.isRecording = false;
+        el.recordBtn.classList.remove("bg-rose-600", "text-white", "animate-pulse");
+        el.recordBtn.classList.add("bg-slate-800", "text-slate-300");
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showToast("Voice recording is not supported in this browser.");
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        state.audioChunks = [];
+        state.mediaRecorder = new MediaRecorder(stream);
+        state.mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) state.audioChunks.push(e.data);
+        };
+        state.mediaRecorder.onstop = () => {
+          stream.getTracks().forEach((t) => t.stop());
+          const blob = new Blob(state.audioChunks, { type: "audio/webm" });
+          const file = new File([blob], "voice-note-" + Date.now() + ".webm", { type: "audio/webm" });
+          state.pendingFile = file;
+          el.attachmentName.textContent = "Voice Note";
+          el.attachmentSize.textContent = formatBytes(file.size);
+          el.attachmentBar.classList.remove("hidden");
+        };
+        state.mediaRecorder.start();
+        state.isRecording = true;
+        el.recordBtn.classList.remove("bg-slate-800", "text-slate-300");
+        el.recordBtn.classList.add("bg-rose-600", "text-white", "animate-pulse");
+        showToast("Recording... Tap mic again to stop.");
+      } catch (err) {
+        showToast("Microphone permission denied.");
+      }
+    });
+
+    // Send message
+    el.messageForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = el.messageInput.value.trim();
+      const file = state.pendingFile;
+      if (!text && !file) return;
+
+      el.sendBtn.disabled = true;
+
+      let mediaUrl = null;
+      let mediaType = null;
+      let fileName = null;
+
+      if (file) {
+        mediaType = getMediaCategory(file.type, file.name);
+        fileName = file.name;
+
+        if (IS_DEMO) {
+          mediaUrl = URL.createObjectURL(file);
+        } else {
+          const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const path = `${state.roomCode}/${Date.now()}_${safeName}`;
+          const { error: uploadError } = await supabaseClient.storage
+            .from("chat-media")
+            .upload(path, file, { cacheControl: "3600", upsert: false });
+
+          if (uploadError) {
+            showToast("Media upload failed: " + uploadError.message);
+            el.sendBtn.disabled = false;
+            return;
+          }
+
+          const { data: urlData } = supabaseClient.storage
+            .from("chat-media")
+            .getPublicUrl(path);
+          mediaUrl = urlData.publicUrl;
+        }
+      }
+
+      if (IS_DEMO) {
+        state.messages.push({
+          id: "demo-" + Date.now(),
+          room_code: state.roomCode,
+          sender: state.userName,
+          text: text,
+          media_url: mediaUrl,
+          media_type: mediaType,
+          file_name: fileName,
+          created_at: new Date().toISOString()
+        });
+        renderMessages();
+      } else {
+        const { data: inserted, error: insertError } = await supabaseClient
+          .from("messages")
+          .insert({
+            room_code: state.roomCode,
+            sender: state.userName,
+            text: text,
+            media_url: mediaUrl,
+            media_type: mediaType,
+            file_name: fileName
+          })
+          .select();
+
+        if (insertError) {
+          showToast("Send failed: " + insertError.message);
+          el.sendBtn.disabled = false;
+          return;
+        }
+        if (inserted && inserted[0]) {
+          const exists = state.messages.some((m) => m.id === inserted[0].id);
+          if (!exists) {
+            state.messages.push(inserted[0]);
+            renderMessages();
+          }
+        }
+      }
+
+      el.messageInput.value = "";
+      el.messageInput.style.height = "auto";
+      clearPendingFile();
+      el.sendBtn.disabled = false;
+    });
+
+    // Auto-resize textarea
+    el.messageInput.addEventListener("input", () => {
+      el.messageInput.style.height = "auto";
+      el.messageInput.style.height = Math.min(el.messageInput.scrollHeight, 112) + "px";
+    });
+
+    // Lightbox click delegation
+    el.messagesList.addEventListener("click", (e) => {
+      const img = e.target.closest("img[data-lightbox]");
+      if (img) {
+        el.lightboxImg.src = img.getAttribute("data-lightbox");
+        el.lightbox.classList.remove("hidden");
+      }
+    });
+
+    el.lightboxClose.addEventListener("click", () => {
+      el.lightbox.classList.add("hidden");
+      el.lightboxImg.src = "";
+    });
+    el.lightbox.addEventListener("click", (e) => {
+      if (e.target === el.lightbox) {
+        el.lightbox.classList.add("hidden");
+        el.lightboxImg.src = "";
+      }
+    });
+  </script>
+</body>
+</html>
+```
