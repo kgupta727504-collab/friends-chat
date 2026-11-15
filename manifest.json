@@ -8,15 +8,9 @@
   "icons": [
     {
       "src": "Code_Generated_Image.png",
-      "sizes": "192x192",
+      "sizes": "192x192 512x512",
       "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "Code_Generated_Image (1).png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }
